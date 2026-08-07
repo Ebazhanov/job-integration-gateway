@@ -96,3 +96,48 @@ The **Job Integration Gateway** acts as a stateless middleware layer designed ar
 │                            CLIENT LAYER                               │
 └─────────────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## 🗺️ Development Roadmap
+
+The full milestone-by-milestone development plan (setup, domain models, provider clients, adapters, aggregation, API, frontend, testing, deployment, and stretch goals) lives in a separate file to keep this README focused:
+
+👉 **[ROADMAP.md](./ROADMAP.md)**
+
+---
+
+## 🧰 Tech Stack (Latest, as of Aug 2026)
+
+Since the pairing is **TypeScript on the frontend + Python on the backend**, here's a stack using current stable releases. Versions move fast — pin exact ones in `package.json` / `pyproject.toml` at implementation time and re-check before a production build.
+
+### Backend — Python
+
+| Component | Choice | Notes |
+|---|---|---|
+| Runtime | **Python 3.14** (latest patch: 3.14.7) | Ships PEP 649/749 deferred annotation evaluation — big win for Pydantic-heavy apps; also has a stable external debugger interface (PEP 768) |
+| Framework | **FastAPI 0.141.x** | Current release line on PyPI; still the fastest-growing async Python framework, ~490M monthly downloads |
+| Validation | **Pydantic v2** | Already implied by FastAPI; keep on latest 2.x |
+| HTTP client | **httpx** (async) | For concurrent Adzuna/Jooble calls via `asyncio.gather` |
+| ASGI server | **Uvicorn** (or Hypercorn if HTTP/2 is needed) | |
+| Package manager | **uv** | Now the FastAPI-recommended installer/runner — much faster than pip/poetry for CI |
+| Testing | **pytest** + **pytest-asyncio** | |
+| Optional cache upgrade | Redis (if moving past in-memory TTL cache to multi-instance deployments) | |
+
+### Frontend — TypeScript
+
+| Component | Choice | Notes |
+|---|---|---|
+| Language | **TypeScript 7.0** | New Go-based native compiler (`tsc` rewritten for speed) — large compile-time speedups over TS 5/6 |
+| Framework | **Next.js 16.3** | Turbopack is stable and now the default bundler for both `dev` and `build`; Build Adapters API for non-Vercel hosting |
+| UI library | **React 19.2** | Ships with the React Compiler (stable as of 19.2), reducing manual `useMemo`/`useCallback` |
+| Runtime | **Node.js 24 (Active LTS)** | Safer default for production than Node 26, which is still on the "Current" track until it enters LTS in Oct 2026 |
+| Styling | Tailwind CSS (latest 4.x) | Pairs well with Next.js App Router |
+| Data fetching | Native `fetch` + React Server Components, or TanStack Query for client-side caching of `/api/v1/jobs` | |
+| Testing | Vitest + Playwright | |
+
+### Why this pairing works well here
+
+- **TS 7's native compiler** + **Next.js 16's Turbopack** minimize the frontend build/type-check bottleneck when iterating on the job-search UI.
+- **FastAPI + Pydantic v2** on 3.14 keeps the backend's typed contracts (your unified `JobPosting` model) consistent end-to-end — you could even generate the TS client types from FastAPI's OpenAPI schema (`openapi-typescript`) to avoid hand-duplicating the `JobPosting` shape on the frontend.
+- **uv** on the backend and **Turbopack** on the frontend both target the same pain point (slow tooling) — worth adopting together for a snappy dev loop.
