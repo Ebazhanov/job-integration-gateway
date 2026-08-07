@@ -20,6 +20,24 @@ This project demonstrates practical integration patterns, including concurrent A
 
 ---
 
+## 🌍 Geographic Coverage
+
+The gateway queries jobs by passing a `location` parameter through to each provider, so coverage depends on which countries Adzuna and Jooble support. Both providers have broad international reach, with strong coverage in Europe:
+
+| Region | Example Locations | Adzuna | Jooble |
+|---|---|:---:|:---:|
+| DACH | Berlin, Munich, Hamburg, Vienna, Zurich | ✅ | ✅ |
+| Central & Eastern Europe | Warsaw, Kraków, Prague, Budapest | ✅ | ✅ |
+| Western Europe | London, Paris, Amsterdam, Brussels | ✅ | ✅ |
+| Southern Europe | Madrid, Rome, Lisbon | ✅ | ✅ |
+| Nordics | Stockholm, Copenhagen, Oslo | ✅ | ✅ |
+| North America | US, Canada | ✅ | ✅ |
+| Other | 60+ additional countries via Jooble | — | ✅ |
+
+> ⚠️ Exact coverage is provider-dependent and can change without notice — always confirm against the current [Adzuna API docs](https://developer.adzuna.com/) and [Jooble API docs](https://jooble.org/api/about) before relying on a specific country/city combination in production.
+
+---
+
 ## 🏗️ Architecture & Flow
 
 The **Job Integration Gateway** acts as a stateless middleware layer designed around asynchronous execution, schema normalization, and resilient API handling.
