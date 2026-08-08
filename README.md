@@ -135,9 +135,3 @@ Since the pairing is **TypeScript on the frontend + Python on the backend**, her
 | Styling | Tailwind CSS (latest 4.x) | Pairs well with Next.js App Router |
 | Data fetching | Native `fetch` + React Server Components, or TanStack Query for client-side caching of `/api/v1/jobs` | |
 | Testing | Vitest + Playwright | |
-
-### Why this pairing works well here
-
-- **TS 7's native compiler** + **Next.js 16's Turbopack** minimize the frontend build/type-check bottleneck when iterating on the job-search UI.
-- **FastAPI + Pydantic v2** on 3.14 keeps the backend's typed contracts (your unified `JobPosting` model) consistent end-to-end — you could even generate the TS client types from FastAPI's OpenAPI schema (`openapi-typescript`) to avoid hand-duplicating the `JobPosting` shape on the frontend.
-- **uv** on the backend and **Turbopack** on the frontend both target the same pain point (slow tooling) — worth adopting together for a snappy dev loop.
