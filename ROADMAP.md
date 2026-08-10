@@ -69,7 +69,7 @@ Both converge at: `M7 → M8`
 
 - [ ] Implement `base_client.py` — shared `httpx.AsyncClient` factory with timeout + retry (e.g. `tenacity` or manual backoff)
 - [ ] Implement `adzuna_client.py` — GET request, `app_id`/`app_key` auth, pagination params
-- [ ] Implement `jooble_client.py` — POST request, JSON body, API key handling
+- [x] Implement `jooble_client.py` — POST request, JSON body, API key handling
 - [ ] Add per-client error handling (timeout, 4xx, 5xx) → raise typed exceptions from `core/exceptions.py`
 - [ ] Mock both providers in tests using recorded fixture JSON (`tests/fixtures/`)
 - [ ] Unit test: client returns typed raw response even on partial/malformed provider payloads
