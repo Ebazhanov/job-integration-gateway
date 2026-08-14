@@ -102,11 +102,14 @@ async def fetch_jooble_jobs(client: httpx.AsyncClient, keywords: str, location: 
 
         postings = []
         for raw_job in raw_jobs:
+            # Map company with safe fallback
+            company_name = raw_job.get("company") or "Unknown Company"
+
             postings.append(
                 JobPosting(
                     id=str(raw_job.get("id")) if raw_job.get("id") else None,
                     title=raw_job.get("title", "Untitled"),
-                    company=raw_job.get("company", "Unknown Company"),
+                    company=company_name,
                     location=raw_job.get("location", "Remote/Unspecified"),
                     salary=raw_job.get("salary") or "Not specified",
                     url=raw_job.get("link", ""),
@@ -120,7 +123,7 @@ async def fetch_jooble_jobs(client: httpx.AsyncClient, keywords: str, location: 
 
 
 async def fetch_remotive_jobs(client: httpx.AsyncClient, search_query: str = "qa", fetch_depth: int = 50) -> List[JobPosting]:
-    """Fetches remote job postings from Remotive API using valid search parameters."""
+    """Fetches remote job postings from Remotive API using normalized company mapping."""
     url = f"https://remotive.com/api/remote-jobs?search={search_query}"
 
     try:
@@ -132,11 +135,14 @@ async def fetch_remotive_jobs(client: httpx.AsyncClient, search_query: str = "qa
 
         postings = []
         for raw_job in raw_jobs[:fetch_depth]:
+            # Normalize company key (Remotive uses 'company_name', fallback to 'company')
+            company_name = raw_job.get("company_name") or raw_job.get("company") or "Unknown Company"
+
             postings.append(
                 JobPosting(
                     id=str(raw_job.get("id")) if raw_job.get("id") else None,
                     title=raw_job.get("title", "Untitled"),
-                    company=raw_job.get("company_name", "Unknown Company"),
+                    company=company_name,
                     location=raw_job.get("candidate_required_location") or "Worldwide / Remote",
                     salary=raw_job.get("salary") or "Not specified",
                     url=raw_job.get("url", ""),
