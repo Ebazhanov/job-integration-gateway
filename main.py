@@ -3,6 +3,7 @@ import time
 import httpx
 from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 from typing import Optional, List
@@ -13,10 +14,15 @@ JOOBLE_API_KEY = os.getenv("JOOBLE_API_KEY")
 
 app = FastAPI(title="Job Integration Gateway API", version="1.0.0")
 
-# Enable CORS so Next.js (localhost:3000) can talk to FastAPI (localhost:8000)
+# Restrict CORS origins for security in production
+allowed_origins = [
+    "http://localhost:3000",
+    "https://ebazhanov.github.io",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -38,6 +44,19 @@ class JobListResponse(BaseModel):
     total_count: int
     count: int
     results: List[JobPosting]
+
+
+# --- Root & Utility Routes ---
+@app.get("/", include_in_schema=False)
+async def root():
+    """Redirects root visits directly to Swagger API docs."""
+    return RedirectResponse(url="/docs")
+
+
+@app.get("/health", tags=["System"])
+async def health_check():
+    """System health check endpoint."""
+    return {"status": "ok", "service": "job-integration-gateway"}
 
 
 # --- Integration Logic ---
@@ -105,11 +124,11 @@ async def fetch_jooble_jobs(keywords: str, location: str, limit: int = 10) -> Jo
 
 
 # --- API Route ---
-@app.get("/api/v1/jobs", response_model=JobListResponse)
+@app.get("/api/v1/jobs", response_model=JobListResponse, tags=["Jobs"])
 async def get_jobs(
-    keyword: str = Query("QA Automation", description="Job title or technology search query"),
-    location: str = Query("Berlin", description="City or geographic region"),
-    limit: int = Query(10, ge=1, le=50, description="Max results to return"),
+        keyword: str = Query("QA Automation", description="Job title or technology search query"),
+        location: str = Query("Berlin", description="City or geographic region"),
+        limit: int = Query(10, ge=1, le=50, description="Max results to return"),
 ):
     """Fetches real job postings from integrated upstream providers."""
     return await fetch_jooble_jobs(keywords=keyword, location=location, limit=limit)
