@@ -1,6 +1,8 @@
 import os
 import time
-import requests
+import httpx
+from fastapi import FastAPI, Query, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 from typing import Optional, List
@@ -9,10 +11,20 @@ load_dotenv()
 
 JOOBLE_API_KEY = os.getenv("JOOBLE_API_KEY")
 
+app = FastAPI(title="Job Integration Gateway API", version="1.0.0")
 
-# --- Domain Models (Unified Contract) ---
+# Enable CORS so Next.js (localhost:3000) can talk to FastAPI (localhost:8000)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# --- Domain Models ---
 class JobPosting(BaseModel):
-    """Unified schema contract for job postings across all providers."""
     id: Optional[str] = Field(default=None, description="Unique job identifier")
     title: str
     company: str
@@ -23,18 +35,15 @@ class JobPosting(BaseModel):
 
 
 class JobListResponse(BaseModel):
-    """Standardized response model served to clients."""
     total_count: int
     count: int
     results: List[JobPosting]
 
 
 # --- Integration Logic ---
-def fetch_jooble_jobs(keywords: str, location: str, limit: int = 5) -> Optional[JobListResponse]:
-    """Fetches, validates, and normalizes job postings from the Jooble REST API."""
+async def fetch_jooble_jobs(keywords: str, location: str, limit: int = 10) -> JobListResponse:
     if not JOOBLE_API_KEY:
-        print("❌ [ERROR] JOOBLE_API_KEY is not set in .env")
-        return None
+        raise HTTPException(status_code=500, detail="JOOBLE_API_KEY is missing in environment.")
 
     url = f"https://jooble.org/api/{JOOBLE_API_KEY}"
     payload = {
@@ -44,65 +53,53 @@ def fetch_jooble_jobs(keywords: str, location: str, limit: int = 5) -> Optional[
         "resultOnPage": limit,
     }
 
-    print(f"\n🚀 [GATEWAY] Requesting jobs from Jooble...")
-    print(f"📍 Query: '{keywords}' | Location: '{location}'")
-
-    start_time = time.time()
-
     try:
-        response = requests.post(url, json=payload, timeout=10)
-        elapsed = round((time.time() - start_time) * 1000, 2)
-        response.raise_for_status()
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(url, json=payload)
+            response.raise_for_status()
 
-        raw_data = response.json()
-        raw_jobs = raw_data.get("jobs", [])
-        total_count = raw_data.get("totalCount", 0)
+            raw_data = response.json()
+            raw_jobs = raw_data.get("jobs", [])
+            total_count = raw_data.get("totalCount", 0)
 
-        # Mapping raw payload to Pydantic domain models (Adapter logic)
-        job_postings = []
-        for raw_job in raw_jobs:
-            job = JobPosting(
-                id=str(raw_job.get("id")) if raw_job.get("id") else None,
-                title=raw_job.get("title", "Untitled"),
-                company=raw_job.get("company", "Unknown Company"),
-                location=raw_job.get("location", "Remote/Unspecified"),
-                salary=raw_job.get("salary") or "Not specified",
-                url=raw_job.get("link", ""),
-                source="Jooble"
+            job_postings = []
+            for raw_job in raw_jobs:
+                job = JobPosting(
+                    id=str(raw_job.get("id")) if raw_job.get("id") else None,
+                    title=raw_job.get("title", "Untitled"),
+                    company=raw_job.get("company", "Unknown Company"),
+                    location=raw_job.get("location", "Remote/Unspecified"),
+                    salary=raw_job.get("salary") or "Not specified",
+                    url=raw_job.get("link", ""),
+                    source="Jooble",
+                )
+                job_postings.append(job)
+
+            return JobListResponse(
+                total_count=total_count,
+                count=len(job_postings),
+                results=job_postings,
             )
-            job_postings.append(job)
 
-        result = JobListResponse(
-            total_count=total_count,
-            count=len(job_postings),
-            results=job_postings
-        )
-
-        print(f"✅ [SUCCESS] Status: {response.status_code} OK ({elapsed} ms)")
-        print(f"📊 Validated Jobs: {result.count} of {result.total_count} total\n")
-        print("=" * 60)
-
-        for idx, job in enumerate(result.results, start=1):
-            print(f"  {idx}. {job.title}")
-            print(f"     • Company:  {job.company}")
-            print(f"     • Location: {job.location}")
-            print(f"     • Salary:   {job.salary}")
-            print(f"     • URL:      {job.url}")
-            print("-" * 60)
-
-        return result
-
-    except requests.exceptions.Timeout:
-        print("❌ [ERROR] Request timed out. Jooble API is taking too long to respond.")
-    except requests.exceptions.HTTPError as err:
-        print(f"❌ [ERROR] HTTP error occurred: {err}")
-    except requests.exceptions.RequestException as err:
-        print(f"❌ [ERROR] Critical network failure: {err}")
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="Upstream provider timed out.")
+    except httpx.HTTPStatusError as err:
+        raise HTTPException(status_code=err.response.status_code, detail="Upstream API error.")
     except Exception as err:
-        print(f"❌ [ERROR] Validation or parsing failed: {err}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch jobs: {str(err)}")
 
-    return None
+
+# --- API Route ---
+@app.get("/api/v1/jobs", response_model=JobListResponse)
+async def get_jobs(
+        keyword: str = Query("QA Automation", description="Job title or technology search query"),
+        location: str = Query("Berlin", description="City or geographic region"),
+        limit: int = Query(10, ge=1, le=50, description="Max results to return"),
+):
+    """Fetches real job postings from integrated upstream providers."""
+    return await fetch_jooble_jobs(keywords=keyword, location=location, limit=limit)
 
 
 if __name__ == "__main__":
-    fetch_jooble_jobs(keywords="QA Automation", location="Berlin", limit=5)
+    import uvicorn
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

@@ -1,4 +1,4 @@
-import { JobPosting, JobListResponse, JobQuery } from '../types/job';
+import { JobPosting, JobListResponse, JobQuery } from '../../frontend/types/job';
 
 const MOCK_JOBS: JobPosting[] = [
     {
