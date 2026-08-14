@@ -160,7 +160,7 @@ async def aggregate_jobs(keywords: str = "QA Automation", location: str = "Germa
     print(f"\n🚀 [GATEWAY] Aggregating jobs for Query: '{keywords}' | Location: '{location}'")
 
     async with httpx.AsyncClient() as client:
-        # Query Jooble with empty location & specified location + Query Remotive with valid search strings
+        # Query Jooble with specified location & empty location + Query Remotive with search strings
         tasks = [
             fetch_jooble_jobs(client, keywords, location=location, fetch_depth=50),
             fetch_jooble_jobs(client, "QA Automation", location="", fetch_depth=50),
