@@ -16,7 +16,7 @@ app = FastAPI(title="Job Integration Gateway API", version="1.0.0")
 # Enable CORS so Next.js (localhost:3000) can talk to FastAPI (localhost:8000)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -42,6 +42,7 @@ class JobListResponse(BaseModel):
 
 # --- Integration Logic ---
 async def fetch_jooble_jobs(keywords: str, location: str, limit: int = 10) -> JobListResponse:
+    """Asynchronously fetches, validates, and normalizes job postings from Jooble REST API."""
     if not JOOBLE_API_KEY:
         raise HTTPException(status_code=500, detail="JOOBLE_API_KEY is missing in environment.")
 
@@ -53,9 +54,15 @@ async def fetch_jooble_jobs(keywords: str, location: str, limit: int = 10) -> Jo
         "resultOnPage": limit,
     }
 
+    print(f"\n🚀 [GATEWAY] Requesting jobs from Jooble (Async)...")
+    print(f"📍 Query: '{keywords}' | Location: '{location}'")
+
+    start_time = time.time()
+
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.post(url, json=payload)
+            elapsed = round((time.time() - start_time) * 1000, 2)
             response.raise_for_status()
 
             raw_data = response.json()
@@ -75,26 +82,34 @@ async def fetch_jooble_jobs(keywords: str, location: str, limit: int = 10) -> Jo
                 )
                 job_postings.append(job)
 
-            return JobListResponse(
+            result = JobListResponse(
                 total_count=total_count,
                 count=len(job_postings),
                 results=job_postings,
             )
 
+            print(f"✅ [SUCCESS] Status: {response.status_code} OK ({elapsed} ms)")
+            print(f"📊 Validated Jobs: {result.count} of {result.total_count} total\n")
+
+            return result
+
     except httpx.TimeoutException:
+        print("❌ [ERROR] Request timed out. Jooble API is taking too long to respond.")
         raise HTTPException(status_code=504, detail="Upstream provider timed out.")
     except httpx.HTTPStatusError as err:
+        print(f"❌ [ERROR] HTTP error occurred: {err.response.status_code} - {err.response.text}")
         raise HTTPException(status_code=err.response.status_code, detail="Upstream API error.")
     except Exception as err:
+        print(f"❌ [ERROR] Failed to fetch jobs: {str(err)}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch jobs: {str(err)}")
 
 
 # --- API Route ---
 @app.get("/api/v1/jobs", response_model=JobListResponse)
 async def get_jobs(
-        keyword: str = Query("QA Automation", description="Job title or technology search query"),
-        location: str = Query("Berlin", description="City or geographic region"),
-        limit: int = Query(10, ge=1, le=50, description="Max results to return"),
+    keyword: str = Query("QA Automation", description="Job title or technology search query"),
+    location: str = Query("Berlin", description="City or geographic region"),
+    limit: int = Query(10, ge=1, le=50, description="Max results to return"),
 ):
     """Fetches real job postings from integrated upstream providers."""
     return await fetch_jooble_jobs(keywords=keyword, location=location, limit=limit)
