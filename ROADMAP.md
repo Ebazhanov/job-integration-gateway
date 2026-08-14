@@ -58,7 +58,7 @@ Both converge at: `M7 → M8`
 
 - [ ] Define unified `JobPosting` Pydantic model (`backend/app/models/job.py`) — id, title, company, location, salary_min/max, currency, url, source, posted_date, description_snippet
 - [ ] Define `JobQuery` request schema (`backend/app/models/query.py`) — keyword, location, page, page_size, remote_only, salary_min
-- [ ] Define standardized `JobListResponse` (results, total_count, page, cached: bool)
+- [x] Define standardized `JobListResponse` (results, total_count, page, cached: bool)
 - [ ] Write unit tests asserting model validation edge cases (missing salary, malformed URL, empty keyword)
 
 **Definition of done:** `JobPosting`/`JobQuery`/`JobListResponse` merged and reviewed — treat this as a frozen contract for the rest of the backend track.
@@ -85,7 +85,7 @@ Both converge at: `M7 → M8`
 - [ ] Define `base_adapter.py` interface (`Protocol` with `normalize(raw: dict) -> list[JobPosting]`)
 - [ ] Implement `adzuna_adapter.py` — map Adzuna fields → `JobPosting`, strip HTML from description
 - [ ] Implement `jooble_adapter.py` — map Jooble fields → `JobPosting`, normalize salary string → min/max numeric
-- [ ] Handle missing/optional fields gracefully (fallback values, never raise on missing salary)
+- [x] Handle missing/optional fields gracefully (fallback values, never raise on missing salary)
 - [ ] Unit tests per adapter using fixture payloads — assert exact `JobPosting` output
 
 **Definition of done:** feeding a saved fixture response through each adapter produces a correct, fully-typed list of `JobPosting`.
