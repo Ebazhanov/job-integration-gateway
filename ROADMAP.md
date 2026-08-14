@@ -41,7 +41,7 @@ Both converge at: `M7 → M8`
 
 **Goal:** anyone can clone the repo and run both services locally with one command.
 
-- [ ] Initialize monorepo structure (`backend/`, `frontend/`, `shared/`)
+- [ ] Initialize monorepo structure (`backend/`, `temp_frontend/`, `shared/`)
 - [ ] `backend`: set up `pyproject.toml` with `uv`, pin Python 3.14
 - [ ] `backend`: add base dependencies (`fastapi[standard]`, `httpx`, `pydantic`, `pytest`, `pytest-asyncio`)
 - [ ] `frontend`: scaffold with `create-next-app` (TypeScript, App Router, Tailwind)
@@ -122,7 +122,7 @@ Both converge at: `M7 → M8`
 
 **Goal:** a working search UI that talks to the real API.
 
-- [ ] Run `openapi-typescript` against backend's `/openapi.json` → generate `frontend/types/job.ts`
+- [ ] Run `openapi-typescript` against backend's `/openapi.json` → generate `temp_frontend/types/job.ts`
 - [ ] Implement `lib/api-client.ts` — typed fetch wrapper for `/api/v1/jobs`
 - [ ] Set up `TanStack Query` provider in `app/layout.tsx`
 - [ ] Build `JobFilters.tsx` (keyword, location, remote toggle, salary min)
@@ -322,6 +322,6 @@ job-integration-gateway/
 
 **Frontend/backend contract:**
 
-The `shared/openapi.json` file is exported from FastAPI (`/openapi.json`) and fed into `openapi-typescript` to generate `frontend/types/job.ts`. This keeps the `JobPosting` shape defined once, in the backend, with the frontend's TypeScript types always in sync — no manual duplication or drift between the two codebases.
+The `shared/openapi.json` file is exported from FastAPI (`/openapi.json`) and fed into `openapi-typescript` to generate `temp_frontend/types/job.ts`. This keeps the `JobPosting` shape defined once, in the backend, with the frontend's TypeScript types always in sync — no manual duplication or drift between the two codebases.
 
 This keeps the **Adapter Pattern** front and center: adding a third provider (e.g., Reed, LinkedIn Jobs API) means adding one `clients/*_client.py` + one `adapters/*_adapter.py`, and registering it in `aggregator.py` — no other layer changes, and the frontend picks up new fields automatically once the OpenAPI schema is regenerated.

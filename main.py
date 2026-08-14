@@ -1,7 +1,8 @@
 import os
 import time
-import asyncio
 import httpx
+from fastapi import FastAPI, Query, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 from typing import Optional, List
@@ -10,10 +11,20 @@ load_dotenv()
 
 JOOBLE_API_KEY = os.getenv("JOOBLE_API_KEY")
 
+app = FastAPI(title="Job Integration Gateway API", version="1.0.0")
 
-# --- Domain Models (Unified Contract) ---
+# Enable CORS so Next.js (localhost:3000) can talk to FastAPI (localhost:8000)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# --- Domain Models ---
 class JobPosting(BaseModel):
-    """Unified schema contract for job postings across all providers."""
     id: Optional[str] = Field(default=None, description="Unique job identifier")
     title: str
     company: str
@@ -24,18 +35,16 @@ class JobPosting(BaseModel):
 
 
 class JobListResponse(BaseModel):
-    """Standardized response model served to clients."""
     total_count: int
     count: int
     results: List[JobPosting]
 
 
-# --- Integration Logic (Async) ---
-async def fetch_jooble_jobs(keywords: str, location: str, limit: int = 5) -> Optional[JobListResponse]:
+# --- Integration Logic ---
+async def fetch_jooble_jobs(keywords: str, location: str, limit: int = 10) -> JobListResponse:
     """Asynchronously fetches, validates, and normalizes job postings from Jooble REST API."""
     if not JOOBLE_API_KEY:
-        print("❌ [ERROR] JOOBLE_API_KEY is not set in .env")
-        return None
+        raise HTTPException(status_code=500, detail="JOOBLE_API_KEY is missing in environment.")
 
     url = f"https://jooble.org/api/{JOOBLE_API_KEY}"
     payload = {
@@ -60,7 +69,6 @@ async def fetch_jooble_jobs(keywords: str, location: str, limit: int = 5) -> Opt
             raw_jobs = raw_data.get("jobs", [])
             total_count = raw_data.get("totalCount", 0)
 
-            # Mapping raw payload to Pydantic domain models
             job_postings = []
             for raw_job in raw_jobs:
                 job = JobPosting(
@@ -70,41 +78,43 @@ async def fetch_jooble_jobs(keywords: str, location: str, limit: int = 5) -> Opt
                     location=raw_job.get("location", "Remote/Unspecified"),
                     salary=raw_job.get("salary") or "Not specified",
                     url=raw_job.get("link", ""),
-                    source="Jooble"
+                    source="Jooble",
                 )
                 job_postings.append(job)
 
             result = JobListResponse(
                 total_count=total_count,
                 count=len(job_postings),
-                results=job_postings
+                results=job_postings,
             )
 
             print(f"✅ [SUCCESS] Status: {response.status_code} OK ({elapsed} ms)")
             print(f"📊 Validated Jobs: {result.count} of {result.total_count} total\n")
-            print("=" * 60)
-
-            for idx, job in enumerate(result.results, start=1):
-                print(f"  {idx}. {job.title}")
-                print(f"     • Company:  {job.company}")
-                print(f"     • Location: {job.location}")
-                print(f"     • Salary:   {job.salary}")
-                print(f"     • URL:      {job.url}")
-                print("-" * 60)
 
             return result
 
     except httpx.TimeoutException:
         print("❌ [ERROR] Request timed out. Jooble API is taking too long to respond.")
+        raise HTTPException(status_code=504, detail="Upstream provider timed out.")
     except httpx.HTTPStatusError as err:
         print(f"❌ [ERROR] HTTP error occurred: {err.response.status_code} - {err.response.text}")
-    except httpx.RequestError as err:
-        print(f"❌ [ERROR] Network communication error: {err}")
+        raise HTTPException(status_code=err.response.status_code, detail="Upstream API error.")
     except Exception as err:
-        print(f"❌ [ERROR] Validation or parsing failed: {err}")
+        print(f"❌ [ERROR] Failed to fetch jobs: {str(err)}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch jobs: {str(err)}")
 
-    return None
+
+# --- API Route ---
+@app.get("/api/v1/jobs", response_model=JobListResponse)
+async def get_jobs(
+    keyword: str = Query("QA Automation", description="Job title or technology search query"),
+    location: str = Query("Berlin", description="City or geographic region"),
+    limit: int = Query(10, ge=1, le=50, description="Max results to return"),
+):
+    """Fetches real job postings from integrated upstream providers."""
+    return await fetch_jooble_jobs(keywords=keyword, location=location, limit=limit)
 
 
 if __name__ == "__main__":
-    asyncio.run(fetch_jooble_jobs(keywords="QA Automation", location="Berlin", limit=5))
+    import uvicorn
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
