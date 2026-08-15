@@ -1,8 +1,8 @@
-## dev: Run backend only until frontend package.json is initialized
-dev: dev-backend
+dev:
+	@$(MAKE) -j 2 dev-backend dev-frontend
 
 dev-backend:
-	python main.py
+	uvicorn main:app --reload --port 8000
 
 dev-frontend:
 	cd frontend && npm run dev
