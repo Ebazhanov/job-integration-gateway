@@ -48,11 +48,6 @@ class JobListResponse(BaseModel):
 
 
 # --- Relevance & Location Filters ---
-QA_TITLE_PATTERN = re.compile(
-    r"\b(qa|sdet|test|tester|testing|softwaretester|quality assurance|quality engineer|quality manager|quality analyst)\b",
-    re.IGNORECASE
-)
-
 EUROPEAN_COUNTRIES = {
     "europe", "eu", "germany", "deutschland", "poland", "polska", "france", "spain",
     "italy", "netherlands", "holland", "belgium", "switzerland", "austria", "portugal",
@@ -70,33 +65,32 @@ EUROPEAN_CITIES = {
     "dublin", "london", "prague", "bratislava", "budapest", "bucharest", "tallinn", "riga", "vilnius"
 }
 
-US_STATE_CODES = {
-    "al", "ak", "az", "ar", "ca", "co", "ct", "de", "fl", "ga", "hi", "id", "il", "in", "ia",
-    "ks", "ky", "la", "me", "md", "ma", "mi", "mn", "ms", "mo", "mt", "ne", "nv", "nh", "nj",
-    "nm", "ny", "nc", "nd", "oh", "ok", "or", "pa", "ri", "sc", "sd", "tn", "tx", "ut", "vt",
-    "va", "wa", "wv", "wi", "wy", "dc"
-}
 
+def is_title_relevant(title: str, query: str) -> bool:
+    """Verifies if the job title matches the search query or core domain tokens."""
+    if not query or not query.strip():
+        return True
 
-def is_qa_relevant(title: str) -> bool:
-    """Accurately verifies if a job title belongs to the QA/Testing domain."""
     title_lower = title.lower()
 
-    if "automation engineer" in title_lower and not any(k in title_lower for k in ["qa", "test", "quality", "sdet"]):
-        return False
+    # Search query token matching
+    tokens = [re.escape(t) for t in query.lower().split() if len(t) > 1]
+    qa_tokens = ["qa", "sdet", "test", "tester", "testing", "quality"]
 
-    return bool(QA_TITLE_PATTERN.search(title_lower))
+    pattern = re.compile(r"\b(" + "|".join(set(tokens + qa_tokens)) + r")\b", re.IGNORECASE)
+    return bool(pattern.search(title_lower))
 
 
 def is_location_relevant(job_location: str, target_location: str) -> bool:
-    """Filters jobs matching European countries, US states (if target is US), or global Remote criteria."""
+    """Passes all postings if no target location specified; otherwise applies region filtering."""
     if not target_location or not target_location.strip():
         return True
 
     job_loc = job_location.lower().strip()
     target_loc = target_location.lower().strip()
 
-    if target_loc in job_loc:
+    # Direct match or global remote
+    if target_loc in job_loc or any(term in job_loc for term in ["remote", "worldwide", "anywhere", "global"]):
         return True
 
     is_europe_target = target_loc in EUROPEAN_COUNTRIES or target_loc in EUROPEAN_CITIES or target_loc in ["europe", "eu"]
@@ -104,36 +98,7 @@ def is_location_relevant(job_location: str, target_location: str) -> bool:
         if any(country in job_loc for country in EUROPEAN_COUNTRIES) or any(city in job_loc for city in EUROPEAN_CITIES):
             return True
 
-    is_us_target = target_loc in ["us", "usa", "united states", "america"]
-    if is_us_target:
-        if any(term in job_loc for term in ["usa", "united states", "us"]):
-            return True
-        parts = [p.strip() for p in job_loc.split(",")]
-        if len(parts) >= 2 and parts[-1] in US_STATE_CODES:
-            return True
-
-    remote_terms = ["remote", "worldwide", "anywhere", "work from home", "global", "cet"]
-    if any(term in job_loc for term in remote_terms):
-        if is_europe_target or not is_us_target:
-            parts = [p.strip() for p in job_loc.split(",")]
-            if len(parts) >= 2 and parts[-1] in US_STATE_CODES:
-                return False
-            if any(country in job_loc for country in ["united states", "usa", "us only", "india", "canada", "australia"]):
-                return False
-        return True
-
     return False
-
-
-# --- Utility Endpoints ---
-@app.get("/", include_in_schema=False)
-async def root():
-    return RedirectResponse(url="/docs")
-
-
-@app.get("/health", tags=["System"])
-async def health_check():
-    return {"status": "ok", "service": "job-integration-gateway"}
 
 
 # --- Upstream Integration Clients ---
@@ -160,13 +125,11 @@ async def fetch_jooble_jobs(client: httpx.AsyncClient, keywords: str, location: 
 
         postings = []
         for raw_job in raw_jobs:
-            company_name = raw_job.get("company") or "Unknown Company"
-
             postings.append(
                 JobPosting(
                     id=str(raw_job.get("id")) if raw_job.get("id") else None,
                     title=raw_job.get("title", "Untitled"),
-                    company=company_name,
+                    company=raw_job.get("company") or "Unknown Company",
                     location=raw_job.get("location", "Remote/Unspecified"),
                     salary=raw_job.get("salary") or "Not specified",
                     url=raw_job.get("link", ""),
@@ -179,7 +142,7 @@ async def fetch_jooble_jobs(client: httpx.AsyncClient, keywords: str, location: 
         return []
 
 
-async def fetch_remotive_jobs(client: httpx.AsyncClient, search_query: str = "qa", fetch_depth: int = 100) -> List[JobPosting]:
+async def fetch_remotive_jobs(client: httpx.AsyncClient, search_query: str = "", fetch_depth: int = 100) -> List[JobPosting]:
     """Fetches remote job postings from Remotive API."""
     url = f"https://remotive.com/api/remote-jobs?search={search_query}"
 
@@ -192,13 +155,11 @@ async def fetch_remotive_jobs(client: httpx.AsyncClient, search_query: str = "qa
 
         postings = []
         for raw_job in raw_jobs[:fetch_depth]:
-            company_name = raw_job.get("company_name") or raw_job.get("company") or "Unknown Company"
-
             postings.append(
                 JobPosting(
                     id=f"remotive_{raw_job.get('id')}" if raw_job.get("id") else None,
                     title=raw_job.get("title", "Untitled"),
-                    company=company_name,
+                    company=raw_job.get("company_name") or "Unknown Company",
                     location=raw_job.get("candidate_required_location") or "Worldwide / Remote",
                     salary=raw_job.get("salary") or "Not specified",
                     url=raw_job.get("url", ""),
@@ -211,84 +172,149 @@ async def fetch_remotive_jobs(client: httpx.AsyncClient, search_query: str = "qa
         return []
 
 
-# --- Aggregated Gateway Logic ---
-async def aggregate_jobs(keywords: str = "QA Automation", location: str = "Europe", limit: int = 30) -> JobListResponse:
-    """
-    Concurrently fetches candidate pools from providers across QA/Testing search terms,
-    applies domain and location relevance filtering, deduplicates, and returns clean results.
-    """
-    start_time = time.time()
+async def fetch_jobicy_jobs(client: httpx.AsyncClient, tag: str = "", fetch_depth: int = 50) -> List[JobPosting]:
+    """Fetches remote job postings from Jobicy API v2 safely."""
+    url = "https://jobicy.com/api/v2/remote-jobs"
+    params = {"count": min(max(1, fetch_depth), 50)}
 
+    clean_tag = tag.lower().strip() if tag else ""
+    if clean_tag:
+        params["tag"] = clean_tag
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Python/3.x",
+        "Accept": "application/json",
+    }
+
+    try:
+        response = await client.get(url, params=params, headers=headers, timeout=10.0)
+
+        # Fallback if tag parameter causes 400 Bad Request
+        if response.status_code == 400 and "tag" in params:
+            print(f"⚠️ [JOBICY WARN] Tag '{clean_tag}' rejected (400). Retrying without tag filter...")
+            params.pop("tag", None)
+            response = await client.get(url, params=params, headers=headers, timeout=10.0)
+
+        response.raise_for_status()
+        raw_data = response.json()
+        raw_jobs = raw_data.get("jobs", [])
+        print(f"🔹 [JOBICY RAW] Tag: '{params.get('tag', '')}' -> Got {len(raw_jobs)} raw jobs")
+
+        postings = []
+        for raw_job in raw_jobs:
+            salary_min = raw_job.get("annualSalaryMin")
+            salary_max = raw_job.get("annualSalaryMax")
+            currency = raw_job.get("salaryCurrency", "").strip()
+
+            if salary_min and salary_max:
+                salary_str = f"{salary_min} - {salary_max} {currency}".strip()
+            elif salary_min:
+                salary_str = f"From {salary_min} {currency}".strip()
+            elif salary_max:
+                salary_str = f"Up to {salary_max} {currency}".strip()
+            else:
+                salary_str = "Not specified"
+
+            postings.append(
+                JobPosting(
+                    id=f"jobicy_{raw_job.get('id')}" if raw_job.get("id") else None,
+                    title=raw_job.get("jobTitle", "Untitled"),
+                    company=raw_job.get("companyName") or "Unknown Company",
+                    location=raw_job.get("jobGeo") or "Worldwide / Remote",
+                    salary=salary_str,
+                    url=raw_job.get("url", ""),
+                    source="Jobicy",
+                )
+            )
+        return postings
+    except Exception as err:
+        print(f"❌ [JOBICY ERROR] [{tag}] {err}")
+        return []
+
+
+# --- Aggregated Gateway Logic ---
+async def aggregate_jobs(keywords: str = "QA Automation", location: str = "", limit: int = 30) -> JobListResponse:
+    start_time = time.time()
     print(f"\n🚀 [GATEWAY] Aggregating jobs for Query: '{keywords}' | Location: '{location}'")
 
     async with httpx.AsyncClient() as client:
-        # Fetch Remotive first
-        remotive_results = await asyncio.gather(
-            fetch_remotive_jobs(client, search_query="qa", fetch_depth=50),
-            fetch_remotive_jobs(client, search_query="testing", fetch_depth=50),
-            return_exceptions=True
-        )
-
-        # Fetch Jooble second
-        jooble_results = await asyncio.gather(
-            fetch_jooble_jobs(client, keywords, location=location, fetch_depth=50),
-            fetch_jooble_jobs(client, "QA Automation", location=location, fetch_depth=50),
-            fetch_jooble_jobs(client, "Software Test Engineer", location=location, fetch_depth=50),
-            fetch_jooble_jobs(client, "SDET", location="", fetch_depth=50),
-            fetch_jooble_jobs(client, "Quality Assurance", location="", fetch_depth=50),
+        # CONCURRENT FETCH FROM ALL THREE PROVIDERS
+        remotive_batch, jobicy_batch, jooble_batch = await asyncio.gather(
+            asyncio.gather(
+                fetch_remotive_jobs(client, search_query="qa", fetch_depth=50),
+                fetch_remotive_jobs(client, search_query="testing", fetch_depth=50),
+                return_exceptions=True
+            ),
+            asyncio.gather(
+                fetch_jobicy_jobs(client, tag="qa", fetch_depth=50),
+                fetch_jobicy_jobs(client, tag="testing", fetch_depth=50),
+                fetch_jobicy_jobs(client, tag="dev", fetch_depth=50),
+                return_exceptions=True
+            ),
+            asyncio.gather(
+                fetch_jooble_jobs(client, keywords, location=location, fetch_depth=50),
+                fetch_jooble_jobs(client, "QA Automation", location=location, fetch_depth=50),
+                return_exceptions=True
+            ),
             return_exceptions=True
         )
 
     seen_identifiers = set()
     aggregated_postings: List[JobPosting] = []
 
-    # Process Remotive results FIRST to give them explicit priority
-    for res in remotive_results:
-        if isinstance(res, list):
-            for job in res:
-                dedup_key = f"{job.title.lower().strip()}_{job.company.lower().strip()}"
-                if dedup_key not in seen_identifiers:
-                    if is_qa_relevant(job.title) and is_location_relevant(job.location, location):
-                        seen_identifiers.add(dedup_key)
-                        aggregated_postings.append(job)
+    def process_batch(batch):
+        if isinstance(batch, list):
+            for res in batch:
+                if isinstance(res, list):
+                    for job in res:
+                        dedup_key = f"{job.title.lower().strip()}_{job.company.lower().strip()}"
+                        if dedup_key not in seen_identifiers:
+                            if is_title_relevant(job.title, keywords) and is_location_relevant(job.location, location):
+                                seen_identifiers.add(dedup_key)
+                                aggregated_postings.append(job)
 
-    # Process Jooble results SECOND
-    for res in jooble_results:
-        if isinstance(res, list):
-            for job in res:
-                dedup_key = f"{job.title.lower().strip()}_{job.company.lower().strip()}"
-                if dedup_key not in seen_identifiers:
-                    if is_qa_relevant(job.title) and is_location_relevant(job.location, location):
-                        seen_identifiers.add(dedup_key)
-                        aggregated_postings.append(job)
+    # Process all batch streams
+    process_batch(remotive_batch)
+    process_batch(jobicy_batch)
+    process_batch(jooble_batch)
 
+    final_results = aggregated_postings[:limit]
     elapsed = round((time.time() - start_time) * 1000, 2)
-    print(f"✅ [SUCCESS] Returned {len(aggregated_postings)} relevant QA/Testing jobs ({elapsed} ms)\n")
+    print(f"✅ [SUCCESS] Returned {len(final_results)} relevant jobs (total matched: {len(aggregated_postings)}) in {elapsed} ms\n")
 
     return JobListResponse(
         total_count=len(aggregated_postings),
-        count=len(aggregated_postings),
-        results=aggregated_postings,
+        count=len(final_results),
+        results=final_results,
     )
 
 
-# --- API Route ---
+# --- API Endpoints ---
+@app.get("/", include_in_schema=False)
+async def root():
+    return RedirectResponse(url="/docs")
+
+
+@app.get("/health", tags=["System"])
+async def health_check():
+    return {"status": "ok", "service": "job-integration-gateway"}
+
+
 @app.get("/api/v1/jobs", response_model=JobListResponse, tags=["Jobs"])
 async def get_jobs(
         keyword: str = Query("QA Automation", description="Job title or technology search query"),
-        location: str = Query("Europe", description="City, country or region (e.g. Poland, Germany, Europe, USA)"),
+        location: str = Query("", description="City, country or region (leave empty for all locations)"),
         limit: int = Query(30, ge=1, le=50, description="Max results to return"),
 ):
-    """Fetches real job postings aggregated from Jooble & Remotive."""
     return await aggregate_jobs(keywords=keyword, location=location, limit=limit)
 
 
 if __name__ == "__main__":
     async def main():
-        result = await aggregate_jobs(keywords="QA Automation", location="Europe", limit=30)
+        result = await aggregate_jobs(keywords="QA Automation", location="", limit=30)
 
         print("=" * 60)
-        print(f"📊 Total Relevant QA/Testing Jobs Fetched ({result.count}):")
+        print(f"📊 Total Relevant Jobs Fetched ({result.count} of {result.total_count}):")
         print("=" * 60 + "\n")
 
         for idx, job in enumerate(result.results, start=1):
