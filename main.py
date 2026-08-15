@@ -73,7 +73,7 @@ def is_title_relevant(title: str, query: str) -> bool:
 
     title_lower = title.lower()
 
-    # Search query token matching
+    # Tokenized search query matching
     tokens = [re.escape(t) for t in query.lower().split() if len(t) > 1]
     qa_tokens = ["qa", "sdet", "test", "tester", "testing", "quality"]
 
@@ -202,6 +202,8 @@ async def fetch_jobicy_jobs(client: httpx.AsyncClient, tag: str = "", fetch_dept
 
         postings = []
         for raw_job in raw_jobs:
+            company_name = raw_job.get("companyName") or "Unknown Company"
+
             salary_min = raw_job.get("annualSalaryMin")
             salary_max = raw_job.get("annualSalaryMax")
             currency = raw_job.get("salaryCurrency", "").strip()
@@ -219,7 +221,7 @@ async def fetch_jobicy_jobs(client: httpx.AsyncClient, tag: str = "", fetch_dept
                 JobPosting(
                     id=f"jobicy_{raw_job.get('id')}" if raw_job.get("id") else None,
                     title=raw_job.get("jobTitle", "Untitled"),
-                    company=raw_job.get("companyName") or "Unknown Company",
+                    company=company_name,
                     location=raw_job.get("jobGeo") or "Worldwide / Remote",
                     salary=salary_str,
                     url=raw_job.get("url", ""),
@@ -227,6 +229,9 @@ async def fetch_jobicy_jobs(client: httpx.AsyncClient, tag: str = "", fetch_dept
                 )
             )
         return postings
+    except httpx.HTTPStatusError as err:
+        print(f"⚠️ [JOBICY HTTP {err.response.status_code}] Skipping query [{tag}]: {err}")
+        return []
     except Exception as err:
         print(f"❌ [JOBICY ERROR] [{tag}] {err}")
         return []
@@ -234,11 +239,11 @@ async def fetch_jobicy_jobs(client: httpx.AsyncClient, tag: str = "", fetch_dept
 
 # --- Aggregated Gateway Logic ---
 async def aggregate_jobs(keywords: str = "QA Automation", location: str = "", limit: int = 30) -> JobListResponse:
+    """Concurrently fetches candidate pools from providers, applies filtering, deduplicates, and returns results."""
     start_time = time.time()
     print(f"\n🚀 [GATEWAY] Aggregating jobs for Query: '{keywords}' | Location: '{location}'")
 
     async with httpx.AsyncClient() as client:
-        # CONCURRENT FETCH FROM ALL THREE PROVIDERS
         remotive_batch, jobicy_batch, jooble_batch = await asyncio.gather(
             asyncio.gather(
                 fetch_remotive_jobs(client, search_query="qa", fetch_depth=50),
@@ -306,6 +311,7 @@ async def get_jobs(
         location: str = Query("", description="City, country or region (leave empty for all locations)"),
         limit: int = Query(30, ge=1, le=50, description="Max results to return"),
 ):
+    """Fetches real job postings aggregated from Jooble, Remotive & Jobicy."""
     return await aggregate_jobs(keywords=keyword, location=location, limit=limit)
 
 
