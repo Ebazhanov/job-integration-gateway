@@ -1,19 +1,24 @@
-import { JobListResponse, JobQuery } from '../types/job';
-
-const API_BASE_URL =
-    process.env.NEXT_PUBLIC_API_URL || 'https://job-integration-gateway.onrender.com';
-
-export async function fetchLiveJobs(query: JobQuery): Promise<JobListResponse> {
+export async function fetchLiveJobs({
+                                        keyword = "QA Automation",
+                                        location = "",
+                                        limit = 30,
+                                    }: {
+    keyword?: string;
+    location?: string;
+    limit?: number;
+}) {
     const params = new URLSearchParams({
-        keyword: query.keyword,
-        location: query.location,
-        limit: String(query.limit || 10),
+        keyword,
+        location,
+        limit: limit.toString(),
     });
 
-    const response = await fetch(`${API_BASE_URL}/api/v1/jobs?${params.toString()}`);
+    const response = await fetch(`http://localhost:8000/api/v1/jobs?${params.toString()}`, {
+        cache: "no-store",
+    });
 
     if (!response.ok) {
-        throw new Error(`Failed to fetch jobs: ${response.statusText}`);
+        throw new Error(`Gateway returned status ${response.status}`);
     }
 
     return response.json();

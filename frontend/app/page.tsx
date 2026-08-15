@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { fetchLiveJobs as fetchJobs } from "@/lib/api-client";
 import { JobPosting } from "@/types/job";
 import { JobCard } from "@/components/JobCard";
 
 export default function HomePage() {
     const [keyword, setKeyword] = useState("QA Automation");
-    const [location, setLocation] = useState("Europe");
+    const [location, setLocation] = useState("");
     const [jobs, setJobs] = useState<JobPosting[]>([]);
     const [loading, setLoading] = useState(true);
     const [statusMessage, setStatusMessage] = useState("Connecting to gateway...");
@@ -15,10 +15,10 @@ export default function HomePage() {
 
     const loadJobs = async (searchKw: string, searchLoc: string) => {
         setLoading(true);
-        setStatusMessage(`Aggregating jobs for "${searchKw}" in "${searchLoc}" across providers...`);
+        const locDisplay = searchLoc.trim() ? `in "${searchLoc}"` : "(Global / All locations)";
+        setStatusMessage(`Aggregating jobs for "${searchKw}" ${locDisplay} across providers...`);
 
         try {
-            // Fixed TS2554: Passed arguments as a single query object matching api-client signature
             const data = await fetchJobs({ keyword: searchKw, location: searchLoc });
             setJobs(data.results);
             setTotalCount(data.total_count);
@@ -40,6 +40,15 @@ export default function HomePage() {
         loadJobs(keyword, location);
     };
 
+    // Calculate job counts per provider source
+    const sourceCounts = useMemo(() => {
+        return jobs.reduce((acc, job) => {
+            const src = job.source || "Other";
+            acc[src] = (acc[src] || 0) + 1;
+            return acc;
+        }, {} as Record<string, number>);
+    }, [jobs]);
+
     return (
         <main className="max-w-5xl mx-auto px-4 py-8">
             {/* Header */}
@@ -48,8 +57,8 @@ export default function HomePage() {
                     Multi-Source Job Aggregator
                 </h1>
                 <p className="mt-2 text-sm text-gray-600">
-                    Aggregating live tech positions from <strong>Jooble</strong> and <strong>Remotive</strong>
-                    <span className="text-gray-400 font-normal"> (Arbeitnow & Jobicy integrations coming soon)</span>.
+                    Aggregating live tech positions from <strong>Jooble</strong>, <strong>Remotive</strong>, and <strong>Jobicy</strong>
+                    <span className="text-gray-400 font-normal"> (Arbeitnow integration coming soon)</span>.
                 </p>
             </header>
 
@@ -59,14 +68,14 @@ export default function HomePage() {
                     type="text"
                     value={keyword}
                     onChange={(e) => setKeyword(e.target.value)}
-                    placeholder="Keyword (e.g. QA, SDET)"
+                    placeholder="Keyword (e.g. QA, Python, DevOps)"
                     className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
                 />
                 <input
                     type="text"
                     value={location}
                     onChange={(e) => setLocation(e.target.value)}
-                    placeholder="Location (e.g. Europe, Germany, Remote)"
+                    placeholder="Location (e.g. Europe, Germany, Remote — leave blank for all)"
                     className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
                 />
                 <button
@@ -84,16 +93,26 @@ export default function HomePage() {
                 </button>
             </form>
 
-            {/* Live Progress Banner */}
-            <div className="mb-6 p-4 rounded-xl bg-gray-50 border border-gray-200 flex items-center justify-between">
+            {/* Live Progress & Provider Source Summary */}
+            <div className="mb-6 p-4 rounded-xl bg-gray-50 border border-gray-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
                     <span className={`h-2.5 w-2.5 rounded-full ${loading ? "bg-amber-500 animate-ping" : "bg-emerald-500"}`} />
                     <span className="text-xs font-medium text-gray-700">{statusMessage}</span>
                 </div>
                 {!loading && (
-                    <span className="text-xs font-semibold px-2.5 py-1 bg-blue-50 text-blue-700 rounded-full border border-blue-200">
-            {totalCount} Total Found
-          </span>
+                    <div className="flex flex-wrap items-center gap-2">
+                        {Object.entries(sourceCounts).map(([sourceName, count]) => (
+                            <span
+                                key={sourceName}
+                                className="text-xs font-medium px-2.5 py-1 bg-white text-gray-700 rounded-md border border-gray-200 shadow-2xs"
+                            >
+                                {sourceName}: <strong>{count}</strong>
+                            </span>
+                        ))}
+                        <span className="text-xs font-semibold px-2.5 py-1 bg-blue-50 text-blue-700 rounded-md border border-blue-200">
+                            {totalCount} Total
+                        </span>
+                    </div>
                 )}
             </div>
 
@@ -102,7 +121,7 @@ export default function HomePage() {
                 <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2">
                     {[...Array(6)].map((_, i) => (
                         <div
-                            key={i}
+                            key={`skeleton-${i}`}
                             className="p-5 border border-gray-200 rounded-xl shadow-sm bg-white animate-pulse flex flex-col justify-between space-y-4"
                         >
                             <div className="space-y-2">
@@ -118,8 +137,8 @@ export default function HomePage() {
                 </div>
             ) : jobs.length > 0 ? (
                 <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2">
-                    {jobs.map((job) => (
-                        <JobCard key={job.id || job.url} job={job} />
+                    {jobs.map((job, idx) => (
+                        <JobCard key={`${job.source}-${job.id || idx}-${job.url}`} job={job} />
                     ))}
                 </div>
             ) : (
