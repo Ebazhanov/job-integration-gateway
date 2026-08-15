@@ -47,6 +47,10 @@ The gateway queries jobs by passing a `location` parameter through to each provi
 
 ## 🏗️ Architecture & Flow
 
+<p align="center">
+  <img src="./assets/flow.svg" alt="Job Aggregation Flow" width="600" />
+</p>
+
 The **Job Integration Gateway** acts as a stateless middleware layer designed around asynchronous execution, schema normalization, and resilient API handling.
 
 ```
