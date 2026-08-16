@@ -5,15 +5,9 @@ An asynchronous, high-performance job aggregator API built with **FastAPI**. It 
 Designed as a stateless middleware layer implementing the **Adapter Pattern**, concurrent API orchestration, Pydantic schema validation, and in-memory TTL caching.
 
 ---
-
-## ⚡ Key Highlights
-
-* **Concurrent API Orchestration** — Parallel fetching using `asyncio.gather` and `httpx` for minimal latency.
-* **Payload Normalization** — Translates disjointed provider JSON schemas into a single clean data contract.
-* **Domain & Location Filtering** — Intelligent regex and region matching to filter out non-relevant roles.
-* **Smart Deduplication** — Merges identical postings across multiple job boards using hash normalization.
-* **In-Memory Caching** — Fast TTL cache layer to prevent provider rate limiting and boost response times.
-
+<p align="center">
+  <img src="./assets/flow.svg" alt="Job Aggregation Flow" width="600" />
+</p>
 ---
 
 ## 🌍 Provider Coverage
@@ -46,10 +40,6 @@ The gateway queries jobs by passing a `location` parameter through to each provi
 ---
 
 ## 🏗️ Architecture & Flow
-
-<p align="center">
-  <img src="./assets/flow.svg" alt="Job Aggregation Flow" width="600" />
-</p>
 
 The **Job Integration Gateway** acts as a stateless middleware layer designed around asynchronous execution, schema normalization, and resilient API handling.
 
